@@ -1,6 +1,7 @@
 SELECT
 	s.shipment_id,
 	order_id,
+	store_id,
 	shipment_status,
 	TYPE,
 	carrier,
@@ -8,14 +9,15 @@ SELECT
 	pending_ts,
 	rts_ts,
 	pur_ts,
+	ofp_ts,
 	intransit_ts,
 	ofd_ts,
 	delivered_ts,
 	rto_ts,
 	rto_ofd_ts,
 	undelivered_ts,
-	shipment_is_deleted,
-	shipment_is_active,
+	is_deleted,
+	is_active,
 	awb,
 	vendor_id,
 	total_cost,
@@ -28,6 +30,7 @@ SELECT
 	pickup_attempts,
 	collection_amount,
 	is_external_shipment,
+	zone,
 	rate_id,
 	cod_charge,
 	gst_charge,
@@ -43,22 +46,22 @@ SELECT
 	parent_awb,
 	cancellation_reason,
 	warehouse_id,
-	wh_city,
-	wh_name,
-	wh_state,
-	wh_country,
-	wh_pincode,
-	wh_mobile_number,
-	wh_address_line_1,
-	wh_address_line_2,
-	wh_contact_person_name,
+	warehouse_city,
+	warehouse_name,
+	warehouse_state,
+	warehouse_country,
+	warehouse_pincode,
+	warehouse_mobile_number,
+	warehouse_address_line_1,
+	warehouse_address_line_2,
+	warehouse_contact_person_name,
 	is_reverse_shipment
 FROM ((
 		SELECT
 			id AS shipment_id,
 			created_at AS shipment_created_at,
-			is_deleted AS shipment_is_deleted,
-			is_active AS shipment_is_active,
+			is_deleted,
+			is_active,
 			status AS shipment_status,
 			TYPE,
 			carrier,
@@ -91,67 +94,76 @@ FROM ((
 			parent_awb,
 			cancellation_reason,
 			warehouse_id,
-			warehouse_address_snapshot ->> 'city' AS wh_city,
-			warehouse_address_snapshot ->> 'name' AS wh_name,
-			warehouse_address_snapshot ->> 'state' AS wh_state,
-			warehouse_address_snapshot ->> 'country' AS wh_country,
-			warehouse_address_snapshot ->> 'pincode' AS wh_pincode,
-			warehouse_address_snapshot ->> 'mobile_number' AS wh_mobile_number,
-			warehouse_address_snapshot ->> 'address_line_1' AS wh_address_line_1,
-			warehouse_address_snapshot ->> 'address_line_2' AS wh_address_line_2,
-			warehouse_address_snapshot ->> 'contact_person_name' AS wh_contact_person_name,
+			warehouse_address_snapshot ->> 'city' AS warehouse_city,
+			warehouse_address_snapshot ->> 'name' AS warehouse_name,
+			warehouse_address_snapshot ->> 'state' AS warehouse_state,
+			warehouse_address_snapshot ->> 'country' AS warehouse_country,
+			warehouse_address_snapshot ->> 'pincode' AS warehouse_pincode,
+			warehouse_address_snapshot ->> 'mobile_number' AS warehouse_mobile_number,
+			warehouse_address_snapshot ->> 'address_line_1' AS warehouse_address_line_1,
+			warehouse_address_snapshot ->> 'address_line_2' AS warehouse_address_line_2,
+			warehouse_address_snapshot ->> 'contact_person_name' AS warehouse_contact_person_name,
 			is_reverse_shipment
 		FROM
 			optimus_shipment
 		WHERE (created_at)::date BETWEEN date_trunc('month', CURRENT_DATE - INTERVAL '12 month')
 		AND(CURRENT_DATE - INTERVAL '1 month')::date) s
-	LEFT JOIN (WITH cte AS (
-			SELECT
-				id AS ss_id,
-				shipment_id,
-				CASE WHEN status = 0 THEN
-					created_at
-				END AS pending_ts,
-				CASE WHEN status = 1 THEN
-					created_at
-				END AS rts_ts,
-				CASE WHEN status = 2 THEN
-					created_at
-				END AS pur_ts,
-				CASE WHEN status = 3 THEN
-					created_at
-				END AS intransit_ts,
-				CASE WHEN status = 13 THEN
-					created_at
-				END AS ofd_ts,
-				CASE WHEN status = 4 THEN
-					created_at
-				END AS delivered_ts,
-				CASE WHEN status = 20 THEN
-					created_at
-				END AS rto_ts,
-				CASE WHEN status = 21 THEN
-					created_at
-				END AS rto_ofd_ts,
-				CASE WHEN status = 11 THEN
-					created_at
-				END AS undelivered_ts
-			FROM
-				optimus_shipmentstatus
-)
+	LEFT JOIN (
 		SELECT
-			shipment_id,
-			MAX(pending_ts) AS pending_ts,
-			MAX(rts_ts) AS rts_ts,
-			MAX(pur_ts) AS pur_ts,
-			MAX(intransit_ts) AS intransit_ts,
-			MAX(ofd_ts) AS ofd_ts,
-			MAX(delivered_ts) AS delivered_ts,
-			MAX(rto_ts) AS rto_ts,
-			MAX(rto_ofd_ts) AS rto_ofd_ts,
-			MAX(undelivered_ts) AS undelivered_ts
+			id, store_id
 		FROM
-			cte
-		GROUP BY
-			shipment_id) ss ON s.shipment_id = ss.shipment_id
+			optimus_order) o ON o.id = s.order_id
+		LEFT JOIN (WITH cte AS (
+				SELECT
+					id AS ss_id,
+					shipment_id,
+					CASE WHEN status = 0 THEN
+						created_at
+					END AS pending_ts,
+					CASE WHEN status = 1 THEN
+						created_at
+					END AS rts_ts,
+					CASE WHEN status = 2 THEN
+						created_at
+					END AS pur_ts,
+					CASE WHEN status = 16 THEN
+						created_at
+					END AS ofp_ts,
+					CASE WHEN status = 3 THEN
+						created_at
+					END AS intransit_ts,
+					CASE WHEN status = 13 THEN
+						created_at
+					END AS ofd_ts,
+					CASE WHEN status = 4 THEN
+						created_at
+					END AS delivered_ts,
+					CASE WHEN status = 20 THEN
+						created_at
+					END AS rto_ts,
+					CASE WHEN status = 21 THEN
+						created_at
+					END AS rto_ofd_ts,
+					CASE WHEN status = 11 THEN
+						created_at
+					END AS undelivered_ts
+				FROM
+					optimus_shipmentstatus
+)
+			SELECT
+				shipment_id,
+				MAX(pending_ts) AS pending_ts,
+				MAX(rts_ts) AS rts_ts,
+				MAX(pur_ts) AS pur_ts,
+				MAX(ofp_ts) AS ofp_ts,
+				MAX(intransit_ts) AS intransit_ts,
+				MAX(ofd_ts) AS ofd_ts,
+				MAX(delivered_ts) AS delivered_ts,
+				MAX(rto_ts) AS rto_ts,
+				MAX(rto_ofd_ts) AS rto_ofd_ts,
+				MAX(undelivered_ts) AS undelivered_ts
+			FROM
+				cte
+			GROUP BY
+				shipment_id) ss ON s.shipment_id = ss.shipment_id
 );
